@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String  @id @default(cuid())
+  sessionToken String  @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  password      String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+}
+
+model ListeningTask {
+  id           String    @id @default(cuid())
+  videoUrl     String
+  durationMin  Int
+  scheduledFor String    @default("2026-01-01")
+  completed    Boolean   @default(false)
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  learnedItems LearnedItem[]
+
+  @@index([scheduledFor])
+}
+
+model LearnedItem {
+  id        String   @id @default(cuid())
+  taskId    String
+  content   String
+  itemType  String   @default("vocabulary") // expression, vocabulary, sentence
+  examples  String   @default("[]")         // JSON array of example sentences, e.g. '["example 1", "example 2"]'
+  status    String   @default("active")     // active, archived, removed
+  createdAt DateTime @default(now())
+
+  task ListeningTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+
+model SpeakingTopic {
+  id        String   @id @default(cuid())
+  title     String
+  category  String?
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  sessions SpeakingSession[]
+}
+
+model SpeakingSession {
+  id             String   @id @default(cuid())
+  topicId        String
+  originalReply  String?
+  improvedReply  String?
+  notes          String?
+  practicedOn    String   @default("2026-01-01")
+  createdAt      DateTime @default(now())
+
+  topic SpeakingTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([practicedOn])
+}
+
+model SpeakingMistake {
+  id             String   @id @default(cuid())
+  wrongVersion   String
+  correctVersion String
+  explanation    String?
+  dateAdded      String   @default("2026-01-01")
+  createdAt      DateTime @default(now())
+
+  @@index([dateAdded])
+}
