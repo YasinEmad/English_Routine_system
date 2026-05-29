@@ -17,11 +17,10 @@ import {
   Pencil,
   Check,
   Sparkles,
+  CalendarDays,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import {
   Select,
   SelectContent,
@@ -41,7 +40,7 @@ interface VocabItem {
   id: string
   content: string
   itemType: string
-  examples: string  // JSON string, e.g. '["example 1", "example 2"]'
+  examples: string
   status: string
   createdAt: string
   task: TaskRef
@@ -53,26 +52,38 @@ interface VocabStats {
   addedThisWeek: number
 }
 
-const typeConfig: Record<string, { color: string; icon: typeof BookOpen; bg: string }> = {
+const typeConfig: Record<string, {
+  badge: string
+  icon: typeof BookOpen
+  accent: string
+  bar: string
+  exampleBorder: string
+}> = {
   expression: {
-    color: "bg-amber-50 text-amber-700 border-amber-200/50 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800/50",
+    badge: "bg-amber-500/12 text-amber-300 border-amber-500/30",
     icon: MessageSquareQuote,
-    bg: "bg-amber-500/40",
+    accent: "from-amber-500/10 via-transparent to-transparent",
+    bar: "bg-amber-400",
+    exampleBorder: "border-amber-500/20 bg-amber-500/5",
   },
   vocabulary: {
-    color: "bg-emerald-50 text-emerald-700 border-emerald-200/50 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800/50",
+    badge: "bg-emerald-500/12 text-emerald-300 border-emerald-500/30",
     icon: BookMarked,
-    bg: "bg-emerald-500/40",
+    accent: "from-emerald-500/10 via-transparent to-transparent",
+    bar: "bg-emerald-400",
+    exampleBorder: "border-emerald-500/20 bg-emerald-500/5",
   },
   sentence: {
-    color: "bg-sky-50 text-sky-700 border-sky-200/50 dark:bg-sky-950/50 dark:text-sky-400 dark:border-sky-800/50",
+    badge: "bg-sky-500/12 text-sky-300 border-sky-500/30",
     icon: AlignLeft,
-    bg: "bg-sky-500/40",
+    accent: "from-sky-500/10 via-transparent to-transparent",
+    bar: "bg-sky-400",
+    exampleBorder: "border-sky-500/20 bg-sky-500/5",
   },
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Vocab Item Card - with inline edit and improved display
+// Vocab Item Card
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function VocabItemCard({ item, onUpdated }: {
@@ -85,13 +96,17 @@ function VocabItemCard({ item, onUpdated }: {
   const [editEx1, setEditEx1] = useState("")
   const [editEx2, setEditEx2] = useState("")
 
+  const config = typeConfig[item.itemType] ?? typeConfig.vocabulary
+  const Icon = config.icon
+
+  let parsedExamples: string[] = []
+  try { parsedExamples = JSON.parse(item.examples || "[]") } catch { /* ignore */ }
+
   const startEdit = () => {
     setEditContent(item.content)
     setEditType(item.itemType)
-    let parsed: string[] = []
-    try { parsed = JSON.parse(item.examples || "[]") } catch { /* ignore */ }
-    setEditEx1(parsed[0] || "")
-    setEditEx2(parsed[1] || "")
+    setEditEx1(parsedExamples[0] || "")
+    setEditEx2(parsedExamples[1] || "")
     setEditing(true)
   }
 
@@ -100,17 +115,11 @@ function VocabItemCard({ item, onUpdated }: {
     const examples: string[] = []
     if (editEx1.trim()) examples.push(editEx1.trim())
     if (editEx2.trim()) examples.push(editEx2.trim())
-
-    // Find the task ID from the item - we need to use the vocabulary API
     try {
       await fetch(`/api/vocabulary/${item.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: editContent.trim(),
-          itemType: editType,
-          examples,
-        }),
+        body: JSON.stringify({ content: editContent.trim(), itemType: editType, examples }),
       })
       setEditing(false)
       toast.success("Item updated!")
@@ -120,10 +129,6 @@ function VocabItemCard({ item, onUpdated }: {
     }
   }
 
-  const cancelEdit = () => {
-    setEditing(false)
-  }
-
   const updateStatus = async (status: string) => {
     try {
       await fetch(`/api/vocabulary/${item.id}`, {
@@ -131,153 +136,188 @@ function VocabItemCard({ item, onUpdated }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       })
-      toast.success(status === "archived" ? "Item archived" : status === "active" ? "Item restored" : "Item removed")
+      toast.success(
+        status === "archived" ? "Item archived" :
+        status === "active" ? "Item restored" : "Item removed"
+      )
       onUpdated()
     } catch {
       toast.error("Failed to update item")
     }
   }
 
-  const config = typeConfig[item.itemType]
-  const Icon = config?.icon || BookOpen
-
-  // Parse examples
-  let parsedExamples: string[] = []
-  try { parsedExamples = JSON.parse(item.examples || "[]") } catch { /* ignore */ }
-
+  // ── Edit Mode ──────────────────────────────────────────────────────────────
   if (editing) {
     return (
-      <Card className="overflow-hidden border-teal-200/50 dark:border-teal-800/50">
-        <CardContent className="p-0">
-          <div className="flex items-stretch">
-            <div className={`w-1.5 shrink-0 ${config?.bg || "bg-muted/40"}`} />
-            <div className="flex-1 p-4 space-y-2.5 animate-slide-down">
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  placeholder="Word/expression/sentence"
-                  className="flex-1 h-8 text-sm"
-                  onKeyDown={(e) => e.key === "Enter" && saveEdit()}
-                />
-                <Select value={editType} onValueChange={setEditType}>
-                  <SelectTrigger className="w-[130px] h-8 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="vocabulary">Vocabulary</SelectItem>
-                    <SelectItem value="expression">Expression</SelectItem>
-                    <SelectItem value="sentence">Sentence</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Input
-                  value={editEx1}
-                  onChange={(e) => setEditEx1(e.target.value)}
-                  placeholder="Example 1 (optional)"
-                  className="flex-1 h-8 text-sm"
-                />
-                <Input
-                  value={editEx2}
-                  onChange={(e) => setEditEx2(e.target.value)}
-                  placeholder="Example 2 (optional)"
-                  className="flex-1 h-8 text-sm"
-                />
-              </div>
-              <div className="flex gap-1.5">
-                <Button size="sm" onClick={saveEdit} className="h-7 text-xs gradient-bg text-white">
-                  <Check className="mr-1 h-3 w-3" />Save
-                </Button>
-                <Button size="sm" variant="outline" onClick={cancelEdit} className="h-7 text-xs">Cancel</Button>
-              </div>
-            </div>
+      <div className="relative overflow-hidden rounded-2xl border border-slate-700/60 bg-slate-900/90 p-5 shadow-xl backdrop-blur-sm">
+        <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${config.accent}`} />
+        <div className="relative space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-1">Editing item</p>
+          <Input
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            placeholder="Word / expression / sentence"
+            className="h-10 border-slate-700 bg-slate-800/80 text-slate-100 placeholder:text-slate-500 focus:border-teal-500/70 focus:ring-teal-500/20 text-base"
+            onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+          />
+          <Select value={editType} onValueChange={setEditType}>
+            <SelectTrigger className="h-9 border-slate-700 bg-slate-800/80 text-slate-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="border-slate-700 bg-slate-900 text-slate-200">
+              <SelectItem value="vocabulary">Vocabulary</SelectItem>
+              <SelectItem value="expression">Expression</SelectItem>
+              <SelectItem value="sentence">Sentence</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            value={editEx1}
+            onChange={(e) => setEditEx1(e.target.value)}
+            placeholder="Example 1 (optional)"
+            className="h-9 border-slate-700 bg-slate-800/80 text-slate-100 placeholder:text-slate-500 focus:border-teal-500/70 focus:ring-teal-500/20"
+          />
+          <Input
+            value={editEx2}
+            onChange={(e) => setEditEx2(e.target.value)}
+            placeholder="Example 2 (optional)"
+            className="h-9 border-slate-700 bg-slate-800/80 text-slate-100 placeholder:text-slate-500 focus:border-teal-500/70 focus:ring-teal-500/20"
+          />
+          <div className="flex gap-2 pt-1">
+            <Button
+              size="sm"
+              onClick={saveEdit}
+              className="h-8 gap-1.5 bg-teal-500 text-slate-950 hover:bg-teal-400 font-semibold"
+            >
+              <Check className="h-3.5 w-3.5" /> Save
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditing(false)}
+              className="h-8 border-slate-700 bg-slate-800/60 text-slate-300 hover:bg-slate-700"
+            >
+              Cancel
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
+  // ── Display Card ───────────────────────────────────────────────────────────
   return (
-    <Card className="transition-all duration-200 hover:shadow-sm group overflow-hidden">
-      <CardContent className="p-0">
-        <div className="flex items-stretch">
-          {/* Type color indicator */}
-          <div className={`w-1.5 shrink-0 ${
-            item.itemType === "vocabulary" ? "bg-emerald-500/40" :
-            item.itemType === "expression" ? "bg-amber-500/40" :
-            "bg-sky-500/40"
-          }`} />
-          <div className="flex-1 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge className={`text-[10px] uppercase tracking-wider border gap-1 ${config?.color || "bg-accent/50 border-border/50"}`}>
-                    <Icon className="h-3 w-3" />
-                    {item.itemType}
-                  </Badge>
-                  <span className="font-medium">{item.content}</span>
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] uppercase tracking-wider ${
-                      item.status === "active"
-                        ? "text-emerald-600 border-emerald-200/50 dark:text-emerald-400 dark:border-emerald-800/50"
-                        : "text-amber-600 border-amber-200/50 dark:text-amber-400 dark:border-amber-800/50"
-                    }`}
-                  >
-                    {item.status}
-                  </Badge>
-                </div>
-                {parsedExamples.length > 0 && (
-                  <div className="space-y-1 pl-1">
-                    {parsedExamples.map((ex, i) => (
-                      <p key={i} className="text-xs text-muted-foreground italic flex items-start gap-1.5">
-                        <MessageSquareQuote className="h-3 w-3 shrink-0 mt-0.5 text-teal-500/50" />
-                        <span>{ex}</span>
-                      </p>
-                    ))}
-                  </div>
-                )}
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                  <a
-                    href={item.task.videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 hover:underline text-teal-600 dark:text-teal-400 transition-colors duration-200"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Source
-                  </a>
-                  <span className="text-muted-foreground/60">Added: {new Date(item.createdAt).toLocaleDateString()}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-0.5 shrink-0">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors duration-200"
-                  onClick={startEdit}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                {item.status === "active" ? (
-                  <Button size="sm" variant="ghost" onClick={() => updateStatus("archived")} className="h-7 w-7 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-950 dark:hover:text-amber-400 transition-colors duration-200">
-                    <Archive className="h-3.5 w-3.5" />
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="ghost" onClick={() => updateStatus("active")} className="h-7 w-7 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950 dark:hover:text-emerald-400 transition-colors duration-200">
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-                <Button size="sm" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive transition-colors duration-200" onClick={() => updateStatus("removed")}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-900/90 shadow-lg backdrop-blur-sm transition-all duration-300 hover:border-slate-600/70 hover:shadow-xl">
+      {/* Accent gradient top-left */}
+      <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${config.accent}`} />
+      {/* Left color bar */}
+      <div className={`absolute left-0 top-0 h-full w-1 rounded-l-2xl ${config.bar}`} />
+
+      <div className="relative flex flex-col gap-4 p-5 pl-6">
+
+        {/* ── Header row: badges + actions ── */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-widest ${config.badge}`}>
+              <Icon className="h-3 w-3" />
+              {item.itemType}
+            </span>
+            <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-widest ${
+              item.status === "active"
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+            }`}>
+              {item.status}
+            </span>
+          </div>
+
+          {/* Action buttons always visible */}
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 rounded-xl text-slate-500 hover:bg-slate-700/60 hover:text-teal-300"
+              onClick={startEdit}
+              aria-label="Edit"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            {item.status === "active" ? (
+              <Button size="sm" variant="ghost" onClick={() => updateStatus("archived")}
+                className="h-8 w-8 rounded-xl text-slate-500 hover:bg-slate-700/60 hover:text-amber-300"
+                aria-label="Archive">
+                <Archive className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
+              <Button size="sm" variant="ghost" onClick={() => updateStatus("active")}
+                className="h-8 w-8 rounded-xl text-slate-500 hover:bg-slate-700/60 hover:text-emerald-300"
+                aria-label="Restore">
+                <RotateCcw className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => updateStatus("removed")}
+              className="h-8 w-8 rounded-xl text-slate-500 hover:bg-rose-500/10 hover:text-rose-400"
+              aria-label="Remove">
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+
+        {/* ── Word / content ── */}
+        <div>
+          <p className="break-words text-2xl font-bold leading-tight tracking-tight text-slate-50 sm:text-3xl">
+            {item.content}
+          </p>
+        </div>
+
+        {/* ── Examples ── */}
+        {parsedExamples.length > 0 ? (
+          <div className="space-y-2">
+            {parsedExamples.map((ex, i) => (
+              <div
+                key={i}
+                className={`rounded-xl border p-3.5 ${config.exampleBorder}`}
+              >
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <MessageSquareQuote className="h-3.5 w-3.5 text-teal-400 shrink-0" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-teal-400">
+                    Example {i + 1}
+                  </span>
+                </div>
+                <p className="break-words text-sm leading-6 text-slate-300">{ex}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-700/50 bg-slate-800/30 px-4 py-3">
+            <p className="text-xs text-slate-500">No examples yet — click edit to add some.</p>
+          </div>
+        )}
+
+        {/* ── Footer: date + source link ── */}
+        <div className="flex items-center justify-between gap-3 border-t border-slate-800/80 pt-3">
+          <div className="flex items-center gap-1.5 text-slate-500">
+            <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+            <span className="text-xs">
+              {new Date(item.createdAt).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </span>
+          </div>
+          <a
+            href={item.task.videoUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-teal-500/10 border border-teal-500/20 px-3 py-1.5 text-xs font-semibold text-teal-400 transition hover:bg-teal-500/20 hover:text-teal-300"
+          >
+            <ExternalLink className="h-3 w-3 shrink-0" />
+            Source
+          </a>
+        </div>
+
+      </div>
+    </div>
   )
 }
 
@@ -315,6 +355,46 @@ export default function VocabularyPage() {
     fetchVocab()
   }, [fetchVocab])
 
+  const statCards = [
+    {
+      label: "Active Items",
+      value: stats.totalActive,
+      icon: BookOpen,
+      accent: "from-emerald-500/15 to-transparent",
+      iconColor: "text-emerald-400",
+      iconBg: "bg-emerald-500/10 border-emerald-500/20",
+      border: "border-emerald-500/20",
+      valueColor: "text-emerald-100",
+    },
+    {
+      label: "Archived",
+      value: stats.totalArchived,
+      icon: Archive,
+      accent: "from-amber-500/15 to-transparent",
+      iconColor: "text-amber-400",
+      iconBg: "bg-amber-500/10 border-amber-500/20",
+      border: "border-amber-500/20",
+      valueColor: "text-amber-100",
+    },
+    {
+      label: "Added This Week",
+      value: stats.addedThisWeek,
+      icon: Sparkles,
+      accent: "from-sky-500/15 to-transparent",
+      iconColor: "text-sky-400",
+      iconBg: "bg-sky-500/10 border-sky-500/20",
+      border: "border-sky-500/20",
+      valueColor: "text-sky-100",
+    },
+  ]
+
+  const filterTypes = [
+    { value: "", label: "All" },
+    { value: "expression", label: "Expressions" },
+    { value: "vocabulary", label: "Vocabulary" },
+    { value: "sentence", label: "Sentences" },
+  ]
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -325,57 +405,44 @@ export default function VocabularyPage() {
       />
 
       {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-3 stagger-children">
-        <Card className="border-l-emerald">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 p-2.5 dark:from-emerald-950 dark:to-emerald-900/30">
-              <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+      <div className="grid gap-3 sm:grid-cols-3">
+        {statCards.map((s) => {
+          const SIcon = s.icon
+          return (
+            <div
+              key={s.label}
+              className={`relative overflow-hidden rounded-2xl border ${s.border} bg-slate-900/80 p-4 backdrop-blur-sm shadow-lg`}
+            >
+              <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${s.accent}`} />
+              <div className="relative flex items-center gap-3">
+                <div className={`rounded-xl border p-2.5 ${s.iconBg}`}>
+                  <SIcon className={`h-5 w-5 ${s.iconColor}`} />
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-widest text-slate-500">{s.label}</p>
+                  <p className={`text-2xl font-bold tracking-tight ${s.valueColor}`}>{s.value}</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Active Items</p>
-              <p className="text-2xl font-bold tracking-tight">{stats.totalActive}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-amber">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-xl bg-gradient-to-br from-amber-50 to-amber-100/50 p-2.5 dark:from-amber-950 dark:to-amber-900/30">
-              <Archive className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Archived Items</p>
-              <p className="text-2xl font-bold tracking-tight">{stats.totalArchived}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-l-sky">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="rounded-xl bg-gradient-to-br from-sky-50 to-sky-100/50 p-2.5 dark:from-sky-950 dark:to-sky-900/30">
-              <Sparkles className="h-5 w-5 text-sky-600 dark:text-sky-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Added This Week</p>
-              <p className="text-2xl font-bold tracking-tight">{stats.addedThisWeek}</p>
-            </div>
-          </CardContent>
-        </Card>
+          )
+        })}
       </div>
 
       {/* Filters */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             <Input
-              placeholder="Search vocabulary..."
-              className="pl-9 pr-9 h-10 bg-background/50 border-muted-foreground/15 focus:border-teal-500/50 focus:ring-2 focus:ring-teal-500/20 transition-all duration-200"
+              placeholder="Search vocabulary…"
+              className="pl-9 pr-9 h-10 border-slate-700/60 bg-slate-800/60 text-slate-200 placeholder:text-slate-500 focus:border-teal-500/60 focus:ring-teal-500/20"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
             {search && (
               <button
                 onClick={() => setSearch("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-muted-foreground transition-colors duration-200"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -385,29 +452,26 @@ export default function VocabularyPage() {
             variant={showArchived ? "default" : "outline"}
             size="sm"
             onClick={() => setShowArchived(!showArchived)}
-            className={`h-10 transition-all duration-200 ${showArchived ? "gradient-bg text-white shadow-sm" : "hover:bg-accent"}`}
+            className={`h-10 px-4 font-medium transition-all duration-200 ${
+              showArchived
+                ? "bg-teal-500 text-slate-950 hover:bg-teal-400 border-transparent"
+                : "border-slate-700/60 bg-slate-800/60 text-slate-300 hover:bg-slate-700/60 hover:text-slate-100"
+            }`}
           >
             {showArchived ? "Show Active" : "Show Archived"}
           </Button>
         </div>
 
-        <div className="flex flex-wrap gap-1.5">
-          {[
-            { value: "", label: "All" },
-            { value: "expression", label: "Expressions" },
-            { value: "vocabulary", label: "Vocabulary" },
-            { value: "sentence", label: "Sentences" },
-          ].map((opt) => (
+        <div className="flex flex-wrap gap-2">
+          {filterTypes.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setType(opt.value)}
-              className={`
-                rounded-full px-3 py-1 text-xs font-medium transition-all duration-200 border
-                ${type === opt.value
-                  ? "gradient-bg text-white border-transparent shadow-sm shadow-teal-500/20"
-                  : "bg-accent/50 text-muted-foreground border-border/50 hover:bg-accent hover:text-foreground"
-                }
-              `}
+              className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider transition-all duration-200 ${
+                type === opt.value
+                  ? "border-teal-500/50 bg-teal-500/15 text-teal-300 shadow-sm"
+                  : "border-slate-700/50 bg-slate-800/50 text-slate-400 hover:border-slate-600 hover:bg-slate-700/50 hover:text-slate-200"
+              }`}
             >
               {opt.label}
             </button>
@@ -415,22 +479,22 @@ export default function VocabularyPage() {
         </div>
       </div>
 
+      {/* Items */}
       {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-teal-500/60" />
         </div>
       ) : items.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 dark:bg-emerald-950/50">
-              <BookOpen className="h-8 w-8 text-emerald-500/60" />
-            </div>
-            <h3 className="text-lg font-semibold">No vocabulary items yet</h3>
-            <p className="text-sm text-muted-foreground mt-1">Items will appear here when you add them from Listening tasks</p>
-          </CardContent>
-        </Card>
+        <div className="relative overflow-hidden rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/60 py-20 text-center backdrop-blur-sm">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent" />
+          <div className="relative mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
+            <BookOpen className="h-8 w-8 text-emerald-400/60" />
+          </div>
+          <h3 className="text-lg font-semibold text-slate-300">No vocabulary items yet</h3>
+          <p className="mt-1 text-sm text-slate-500">Items will appear here when you add them from Listening tasks</p>
+        </div>
       ) : (
-        <div className="space-y-2 stagger-children">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
             <VocabItemCard key={item.id} item={item} onUpdated={fetchVocab} />
           ))}
